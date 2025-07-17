@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, Tag, FileText, Trash2, User, AlertCircle } from 'lucide-react'
-import { useTaskStore, Task, Person } from '@/store/taskStore'
+import { Calendar, Clock, Tag, FileText, Trash2, User, AlertCircle, Plus, Circle, CheckCircle2 } from 'lucide-react'
+import { useTaskStore, Task, Person, Subtask } from '@/store/taskStore'
 import {
   Dialog,
   DialogContent,
@@ -42,11 +42,17 @@ const priorityOptions = [
   { value: 'urgent', label: 'Urgent' },
 ]
 
+const categoryOptions = [
+  { value: 'private', label: 'Private' },
+  { value: 'work', label: 'Work' },
+]
+
 export function TaskEditDialog({ taskId, open, onOpenChange }: TaskEditDialogProps) {
-  const { tasks, updateTask, deleteTask } = useTaskStore()
+  const { tasks, updateTask, deleteTask, addSubtask, updateSubtask, deleteSubtask } = useTaskStore()
   const task = tasks.find(t => t.id === taskId)
   
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
   const [tagInput, setTagInput] = useState('')
   const [tags, setTags] = useState<string[]>([])
@@ -54,18 +60,23 @@ export function TaskEditDialog({ taskId, open, onOpenChange }: TaskEditDialogPro
   const [scheduledTime, setScheduledTime] = useState('')
   const [status, setStatus] = useState<Task['status']>('todo')
   const [priority, setPriority] = useState<Task['priority']>('medium')
+  const [category, setCategory] = useState<Task['category']>('work')
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
 
   // Reset form when task changes
   useEffect(() => {
     if (task) {
       setTitle(task.title)
+      setDescription(task.description || '')
       setNotes(task.notes || '')
       setTags(task.tags || [])
       setDueDate(task.dueDate ? format(task.dueDate, 'yyyy-MM-dd') : '')
       setScheduledTime(task.scheduledTime || '')
       setStatus(task.status || 'todo')
       setPriority(task.priority || 'medium')
+      setCategory(task.category || 'work')
       setTagInput('')
+      setNewSubtaskTitle('')
     }
   }, [task])
 
@@ -74,12 +85,14 @@ export function TaskEditDialog({ taskId, open, onOpenChange }: TaskEditDialogPro
 
     const updates: Partial<Task> = {
       title: title.trim(),
+      description: description.trim() || undefined,
       notes: notes.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
       scheduledTime: scheduledTime || undefined,
       status,
       priority,
+      category,
     }
 
     updateTask(task.id, updates)
@@ -111,6 +124,29 @@ export function TaskEditDialog({ taskId, open, onOpenChange }: TaskEditDialogPro
     }
   }
 
+  const handleAddSubtask = () => {
+    if (!task || !newSubtaskTitle.trim()) return
+    addSubtask(task.id, newSubtaskTitle.trim())
+    setNewSubtaskTitle('')
+  }
+
+  const handleSubtaskKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleAddSubtask()
+    }
+  }
+
+  const handleToggleSubtask = (subtaskId: string, completed: boolean) => {
+    if (!task) return
+    updateSubtask(task.id, subtaskId, { completed })
+  }
+
+  const handleDeleteSubtask = (subtaskId: string) => {
+    if (!task) return
+    deleteSubtask(task.id, subtaskId)
+  }
+
   if (!task) return null
 
   return (
@@ -131,6 +167,88 @@ export function TaskEditDialog({ taskId, open, onOpenChange }: TaskEditDialogPro
               placeholder="Task title"
               className="text-base"
             />
+          </div>
+
+          {/* Description */}
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description..."
+              rows={2}
+            />
+          </div>
+
+          {/* Category */}
+          <div className="space-y-2">
+            <Label>Category</Label>
+            <Select value={category} onValueChange={(value: Task['category']) => setCategory(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categoryOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Subtasks */}
+          <div className="space-y-2">
+            <Label>Subtasks</Label>
+            <div className="space-y-2">
+              {task.subtasks?.map((subtask) => (
+                <div key={subtask.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
+                  <button
+                    onClick={() => handleToggleSubtask(subtask.id, !subtask.completed)}
+                    className="flex-shrink-0"
+                  >
+                    {subtask.completed ? (
+                      <CheckCircle2 size={16} className="text-green-600" />
+                    ) : (
+                      <Circle size={16} className="text-gray-400" />
+                    )}
+                  </button>
+                  <span className={cn(
+                    'flex-1 text-sm',
+                    subtask.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                  )}>
+                    {subtask.title}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteSubtask(subtask.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Input
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  onKeyDown={handleSubtaskKeyDown}
+                  placeholder="Add subtask..."
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddSubtask}
+                  disabled={!newSubtaskTitle.trim()}
+                >
+                  <Plus size={14} />
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* People (Read-only for now) */}
